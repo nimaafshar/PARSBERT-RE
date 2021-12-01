@@ -1,2 +1,2 @@
-# persian_relation_extraction
+# Persian Relation Extraction
 Relation Extraction in persian language using various methods
