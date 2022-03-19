@@ -1,0 +1,5 @@
+transformers==4.17.0
+hazm==0.7.0
+pyyaml==5.4.1
+clean-text[gpl]
+python-dotenv==0.19.2
