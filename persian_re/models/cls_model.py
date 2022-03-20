@@ -1,6 +1,6 @@
 import torch.nn as nn
 from transformers import BertModel
-from ..settings import MODEL_NAME_OR_PATH
+from ..settings import Config
 
 
 class CLSModel(nn.Module):
@@ -8,7 +8,7 @@ class CLSModel(nn.Module):
     def __init__(self, config):
         super(CLSModel, self).__init__()
 
-        self.bert = BertModel.from_pretrained(MODEL_NAME_OR_PATH)
+        self.bert = BertModel.from_pretrained(Config.MODEL_NAME_OR_PATH)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -26,6 +26,3 @@ class CLSModel(nn.Module):
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         return logits
-
-
-

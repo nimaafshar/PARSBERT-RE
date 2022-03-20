@@ -1,4 +1,4 @@
-from ..settings import BASE_PATH
+from ..settings import Config
 import pandas as pd
 from typing import Tuple, List, Dict
 import pickle
@@ -10,8 +10,8 @@ def load_raw_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
     loading data from BASE_PATH
     :return: (train_df, test_df)
     """
-    train_df = pd.read_csv(BASE_PATH / 'PERLEX' / 'train.csv', encoding='utf-8')
-    test_df = pd.read_csv(BASE_PATH / 'PERLEX' / 'test.csv', encoding='utf-8')
+    train_df = pd.read_csv(Config.BASE_PATH / 'PERLEX' / 'train.csv', encoding='utf-8')
+    test_df = pd.read_csv(Config.BASE_PATH / 'PERLEX' / 'test.csv', encoding='utf-8')
     return train_df, test_df
 
 
@@ -32,17 +32,17 @@ class PerlexData:
         return cls._instance
 
     def __init__(self):
-        with open(BASE_PATH / 'PERLEX' / 'transformed_data.bin', 'rb') as binary_file:
+        with open(Config.BASE_PATH / 'PERLEX' / 'transformed_data.bin', 'rb') as binary_file:
             data = pickle.load(binary_file)
 
         self._x_train: List[str] = data['train'][0]
-        self._y_train: List[int] = data['train'][1]
+        self._y_train: List[str] = data['train'][1]
 
         self._x_valid: List[str] = data['valid'][0]
-        self._y_valid: List[int] = data['valid'][1]
+        self._y_valid: List[str] = data['valid'][1]
 
         self._x_test: List[str] = data['test'][0]
-        self._y_test: List[int] = data['test'][1]
+        self._y_test: List[str] = data['test'][1]
 
         self._label2ids: Dict[str, int] = data['labels']['label2id']
         self._id2labels: Dict[int, str] = data['labels']['id2label']
@@ -58,7 +58,7 @@ class PerlexData:
         return self._x_train
 
     @property
-    def y_train(self) -> List[int]:
+    def y_train(self) -> List[str]:
         return self._y_train
 
     @property
@@ -66,7 +66,7 @@ class PerlexData:
         return self._x_valid
 
     @property
-    def y_valid(self) -> List[int]:
+    def y_valid(self) -> List[str]:
         return self._y_valid
 
     @property
@@ -74,7 +74,7 @@ class PerlexData:
         return self._x_test
 
     @property
-    def y_test(self) -> List[int]:
+    def y_test(self) -> List[str]:
         return self._y_test
 
     @property
