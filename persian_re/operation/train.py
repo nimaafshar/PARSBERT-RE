@@ -18,6 +18,7 @@ from ..settings import Config
 
 @dataclass
 class TrainingArguments:
+    epochs: int = 10
     clip: float = 0.0
     train_callback_interval: int = 100
 
@@ -47,6 +48,10 @@ class Trainer(abc.ABC):
         self._test_data_loader: torch.utils.data.DataLoader = self.get_test_data_loader()
 
         self._valid_loss_min: float = np.inf
+
+    @property
+    def total_steps(self) -> int:
+        return self._arguments.epochs * len(self._training_data_loader)
 
     @abc.abstractmethod
     def get_training_data_loader(self) -> torch.utils.data.DataLoader:
@@ -187,7 +192,7 @@ class Trainer(abc.ABC):
     def _save(self) -> None:
         torch.save(self._model, self._output_path)
 
-    def train(self, epochs=10) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
+    def train(self) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
         train_history = []
         valid_history = []
         for epoch in tqdm(range(1, epochs + 1), desc="Epochs... "):
