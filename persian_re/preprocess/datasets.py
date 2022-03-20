@@ -40,7 +40,6 @@ class PerlexDataset(torch.utils.data.Dataset):
             return_tensors='pt')
 
         inputs = {
-            'text': text,
             'input_ids': encoding['input_ids'].flatten(),
             'attention_mask': encoding['attention_mask'].flatten(),
             'token_type_ids': encoding['token_type_ids'].flatten(),
