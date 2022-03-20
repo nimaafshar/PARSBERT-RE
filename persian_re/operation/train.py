@@ -1,111 +1,240 @@
+import abc
+import pathlib
+
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 import numpy as np
 
-from .evaluation import eval_op
+from typing import Optional, MutableMapping, Union, List, Dict, Tuple
+from dataclasses import dataclass
+
+from ..settings import Config
 
 
-def acc_and_f1(y_true, y_pred, average='weighted'):
-    acc = accuracy_score(y_true, y_pred, normalize=True)
-    f1 = f1_score(y_true=y_true, y_pred=y_pred, average=average)
-    return {
-        "acc": acc,
-        "f1": f1,
-    }
+@dataclass
+class TrainingArguments:
+    clip: float = 0.0
+    train_callback_interval: int = 100
 
 
-# change this function in order to change basic classification loss, here we calculate mean of batch losses as pass loss
-def y_loss(y_true, y_pred, losses):
-    y_true = torch.stack(y_true).cpu().detach().numpy()
-    y_pred = torch.stack(y_pred).cpu().detach().numpy()
-    y = [y_true, y_pred]
-    loss = np.mean(losses)
+class Trainer(abc.ABC):
+    def __init__(self, model: nn.Module,
+                 device: torch.device,
+                 loss_function: nn.Module,
+                 optimizer: torch.optim.Optimizer,
+                 scheduler: torch.optim.lr_scheduler,
+                 arguments: TrainingArguments,
+                 save_model: bool = True,
+                 output_path: pathlib.Path = Config.OUTPUT_PATH):
+        self._model: torch.nn.Module = model
+        self._save_model: bool = save_model
+        self._output_path: pathlib.Path = output_path
 
-    return y, loss
+        self._device: torch.device = device
+        self._loss_function: nn.Module = loss_function
+        self._optimizer: torch.optim.Optimizer = optimizer
+        self._scheduler: nn.Module = scheduler
 
+        self._arguments: TrainingArguments = arguments
 
-def train_op(model: nn.Module,
-             device: torch.device,
-             data_loader: torch.utils.data.DataLoader,
-             loss_fn: torch.nn.modules.loss,
-             optimizer: torch.optim.Optimizer,
-             scheduler,
-             step=0,
-             print_every_step=100,
-             eval=False,
-             eval_cb=None,
-             eval_loss_min=np.Inf,
-             eval_data_loader=None,
-             clip=0.0):
-    # put model in training mode
-    model.train()
+        self._training_data_loader: torch.utils.data.DataLoader = self.get_training_data_loader()
+        self._validation_data_loader: torch.utils.data.DataLoader = self.get_validation_data_loader()
+        self._test_data_loader: torch.utils.data.DataLoader = self.get_test_data_loader()
 
-    losses = []
-    y_pred = []
-    y_true = []
+        self._valid_loss_min: float = np.inf
 
-    for data in tqdm(data_loader, total=len(data_loader), desc="Training... "):
-        step += 1
+    @abc.abstractmethod
+    def get_training_data_loader(self) -> torch.utils.data.DataLoader:
+        pass
 
-        data
-        input_ids = dl['input_ids']
-        attention_mask = dl['attention_mask']
-        token_type_ids = dl['token_type_ids']
-        targets = dl['targets']
+    @abc.abstractmethod
+    def get_validation_data_loader(self) -> torch.utils.data.DataLoader:
+        pass
 
-        # move tensors to GPU if CUDA is available
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        token_type_ids = token_type_ids.to(device)
-        targets = targets.to(device)
+    @abc.abstractmethod
+    def get_test_data_loader(self) -> torch.utils.data.DataLoader:
+        pass
 
-        # clear the gradients of all optimized variables
-        optimizer.zero_grad()
+    def _move_to_device(self, value: Union[MutableMapping[str, torch.Tensor], torch.Tensor]):
+        if isinstance(value, torch.Tensor):
+            return value.to(self._device)
+        elif isinstance(value, MutableMapping):
+            for key in value.keys():
+                value[key] = value[key].to(self._device)
+            return value
+        else:
+            raise TypeError(f"{type(value)} is not supported for moving to device.")
 
-        # compute predicted outputs by passing inputs to the model
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids)
+    def _compute_metrics(self, y_true: np.ndarray, y_pred: np.ndarray, losses: Optional[List[float]] = None) -> \
+            Dict[str, float]:
+        # override this function if you want to use different metrics
+        metrics = {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'f1_weighted': f1_score(y_true, y_pred, average='weighted')
+        }
+        if losses:
+            metrics['loss'] = np.mean(losses)
+        return metrics
 
-        # convert output probabilities to predicted class
-        _, preds = torch.max(outputs, dim=1)
+    def _print_metrics(self, metrics: Dict[str, float]) -> None:
+        statement = "["
+        for key, value in metrics.items():
+            statement += f"{key}:{value:.4f},"
+        statement += "]"
+        print(statement)
 
-        # calculate the batch loss
-        loss = loss_fn(outputs, targets)
+    def _train_callback(self, step: int, total_steps: int, y_true: np.ndarray, y_pred: np.ndarray, losses: List[float]):
+        print(f"step {step}/{total_steps}:")
+        metrics: Dict[str, float] = self._compute_metrics(y_true, y_pred, losses)
+        self._print_metrics(metrics)
 
-        # accumulate all the losses
-        losses.append(loss.item())
+    def _train_operation(self) -> Tuple[float, Dict[str, float]]:
+        losses = []
+        y_pred = np.empty()
+        y_true = np.empty()
+        # put model in training mode
+        self._model.train()
+        step = 0
 
-        # compute gradient of the loss with respect to model parameters
-        loss.backward()
+        for data in tqdm(self._training_data_loader, total=len(self._training_data_loader), desc="Training... "):
+            step += 1
+            data: dict
 
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        if clip > 0.0:
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip)
+            # move tensors to GPU if CUDA is available
+            data = self._move_to_device(data)
+            targets = data.pop('targets')
 
-        # perform optimization step
-        optimizer.step()
+            # clear the gradients of all optimized variables
+            self._optimizer.zero_grad()
 
-        # perform scheduler step
-        scheduler.step()
+            # compute predicted outputs by passing inputs to the model
+            # data is a Mapping containing input_ids,token_type_ids,attention_mask
+            outputs = self._model(**data)
 
-        y_pred.extend(preds)
-        y_true.extend(targets)
+            # convert output probabilities to predicted class
+            _, predictions = torch.max(outputs, dim=1)
 
-        if eval:
-            train_y, train_loss = y_loss(y_true, y_pred, losses)
-            train_score = acc_and_f1(train_y[0], train_y[1], average='weighted')
+            # calculate the batch loss
+            loss = self._loss_function(outputs, targets)
 
-            if step % print_every_step == 0:
-                eval_y, eval_loss = eval_op(model, eval_data_loader, loss_fn)
-                eval_score = acc_and_f1(eval_y[0], eval_y[1], average='weighted')
+            # accumulate all the losses
+            losses.append(loss.item())
 
-                if hasattr(eval_cb, '__call__'):
-                    eval_loss_min = eval_cb(model, step, train_score, train_loss, eval_score, eval_loss, eval_loss_min)
+            # compute gradient of the loss with respect to model parameters
+            loss.backward()
 
-    train_y, train_loss = y_loss(y_true, y_pred, losses)
+            # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+            if self._arguments.clip > 0.0:
+                nn.utils.clip_grad_norm_(self._model.parameters(), max_norm=self._arguments.clip)
 
-    return train_y, train_loss, step, eval_loss_min
+            # perform optimization step
+            self._optimizer.step()
+
+            # perform scheduler step
+            self._scheduler.step()
+
+            # adding new predictions
+            y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
+            y_true = np.append(y_true, targets.cpu().detach().numpy())
+
+            # print metric
+            if step % self._arguments.train_callback_interval == 0:
+                self._train_callback(step, len(self._training_data_loader), y_true, y_pred, losses)
+
+        return np.mean(losses), self._compute_metrics(y_true, y_pred, losses)
+
+    def _validation_operation(self) -> Tuple[float, Dict[str, float]]:
+        # put model into evaluation mode
+        self._model.eval()
+
+        losses = []
+        y_pred = np.empty()
+        y_true = np.empty()
+        step = 0
+        with torch.no_grad():
+            for data in tqdm(self._validation_data_loader, total=len(self._validation_data_loader),
+                             desc="Validation... "):
+                step += 1
+                data: dict
+
+                # move tensors to GPU if CUDA is available
+                data = self._move_to_device(data)
+                targets = data.pop('targets')
+
+                # compute predicted outputs by passing inputs to the model
+                outputs = self._model(**data)
+
+                # convert output probabilities to predicted class
+                _, predictions = torch.max(outputs, dim=1)
+
+                # calculate the batch loss
+                loss = self._loss_function(outputs, targets)
+
+                # accumulate all the losses
+                losses.append(loss.item())
+
+                # adding new predictions
+                y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
+                y_true = np.append(y_true, targets.cpu().detach().numpy())
+
+        return np.mean(losses), self._compute_metrics(y_true, y_pred, losses)
+
+    def _save(self) -> None:
+        torch.save(self._model, self._output_path)
+
+    def train(self, epochs=10) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
+        train_history = []
+        valid_history = []
+        for epoch in tqdm(range(1, epochs + 1), desc="Epochs... "):
+            print(f"epoch {epoch}/{epochs}")
+            train_loss, train_metrics = self._train_operation()
+            print("train:", end=" ")
+            self._print_metrics(train_metrics)
+
+            valid_loss, valid_metrics = self._validation_operation()
+            print("validation:", end=" ")
+            self._print_metrics(valid_metrics)
+
+            if valid_loss < self._valid_loss_min:
+                print(f"Validation loss decreased {self._valid_loss_min:.6f} -> {valid_loss:.6f}: saving model...")
+                self._valid_loss_min = valid_loss
+                self._save()
+
+            train_history.append(train_metrics)
+            valid_history.append(valid_metrics)
+        return train_history, valid_history
+
+    def predict_tests(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, float]]:
+        data_loader = self._test_data_loader
+
+        y_pred_batches = []
+        y_pred_probs_batches = []
+        y_true_batches = []
+
+        self._model.eval()
+        with torch.no_grad():
+            for data in tqdm(data_loader, total=len(data_loader), desc="Predicting tests"):
+                # move tensors to GPU if CUDA is available
+                data = self._move_to_device(data)
+                targets = data.pop('targets')
+
+                # compute predicted outputs by passing inputs to the model
+                outputs = self._model(**data)
+
+                # convert output probabilities to predicted class
+                _, predictions = torch.max(outputs, dim=1)
+
+                y_pred_batches.extend(predictions)
+                y_pred_probs_batches.extend(F.softmax(outputs, dim=1))
+                y_true_batches.extend(targets)
+
+        y_pred = torch.stack(y_pred_batches).cpu().detach().numpy()
+        y_pred_probs = torch.stack(y_pred_probs_batches).cpu().detach().numpy()
+        y_true = torch.stack(y_true_batches).cpu().detach().numpy()
+
+        return y_pred, y_pred_probs, y_true, self._compute_metrics(y_true, y_pred)
