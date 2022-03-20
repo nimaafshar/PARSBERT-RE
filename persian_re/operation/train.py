@@ -1,4 +1,3 @@
-import abc
 import pathlib
 
 from tqdm import tqdm
@@ -23,13 +22,16 @@ class TrainingArguments:
     train_callback_interval: int = 100
 
 
-class Trainer(abc.ABC):
+class Trainer:
     def __init__(self, model: nn.Module,
                  device: torch.device,
                  loss_function: nn.Module,
                  optimizer: torch.optim.Optimizer,
                  scheduler: torch.optim.lr_scheduler,
                  arguments: TrainingArguments,
+                 train_data_loader: torch.utils.data.DataLoader,
+                 valid_data_loader: torch.utils.data.DataLoader,
+                 test_data_loader: torch.utils.data.DataLoader,
                  save_model: bool = True,
                  output_path: pathlib.Path = Config.OUTPUT_PATH):
         self._model: torch.nn.Module = model
@@ -43,27 +45,11 @@ class Trainer(abc.ABC):
 
         self._arguments: TrainingArguments = arguments
 
-        self._training_data_loader: torch.utils.data.DataLoader = self.get_training_data_loader()
-        self._validation_data_loader: torch.utils.data.DataLoader = self.get_validation_data_loader()
-        self._test_data_loader: torch.utils.data.DataLoader = self.get_test_data_loader()
+        self._training_data_loader: torch.utils.data.DataLoader = train_data_loader
+        self._validation_data_loader: torch.utils.data.DataLoader = valid_data_loader
+        self._test_data_loader: torch.utils.data.DataLoader = test_data_loader
 
         self._valid_loss_min: float = np.inf
-
-    @property
-    def total_steps(self) -> int:
-        return self._arguments.epochs * len(self._training_data_loader)
-
-    @abc.abstractmethod
-    def get_training_data_loader(self) -> torch.utils.data.DataLoader:
-        pass
-
-    @abc.abstractmethod
-    def get_validation_data_loader(self) -> torch.utils.data.DataLoader:
-        pass
-
-    @abc.abstractmethod
-    def get_test_data_loader(self) -> torch.utils.data.DataLoader:
-        pass
 
     def _move_to_device(self, value: Union[MutableMapping[str, torch.Tensor], torch.Tensor]):
         if isinstance(value, torch.Tensor):
@@ -100,8 +86,8 @@ class Trainer(abc.ABC):
 
     def _train_operation(self) -> Tuple[float, Dict[str, float]]:
         losses = []
-        y_pred = np.empty()
-        y_true = np.empty()
+        y_pred = None
+        y_true = None
         # put model in training mode
         self._model.train()
         step = 0
@@ -144,8 +130,12 @@ class Trainer(abc.ABC):
             self._scheduler.step()
 
             # adding new predictions
-            y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
-            y_true = np.append(y_true, targets.cpu().detach().numpy())
+            if y_pred is None:
+                y_pred = predictions.cpu().detach().numpy()
+                y_true = targets.cpu().detach().numpy()
+            else:
+                y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
+                y_true = np.append(y_true, targets.cpu().detach().numpy())
 
             # print metric
             if step % self._arguments.train_callback_interval == 0:
@@ -158,8 +148,8 @@ class Trainer(abc.ABC):
         self._model.eval()
 
         losses = []
-        y_pred = np.empty()
-        y_true = np.empty()
+        y_pred = None
+        y_true = None
         step = 0
         with torch.no_grad():
             for data in tqdm(self._validation_data_loader, total=len(self._validation_data_loader),
@@ -184,8 +174,12 @@ class Trainer(abc.ABC):
                 losses.append(loss.item())
 
                 # adding new predictions
-                y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
-                y_true = np.append(y_true, targets.cpu().detach().numpy())
+                if y_pred is None:
+                    y_pred = predictions.cpu().detach().numpy()
+                    y_true = targets.cpu().detach().numpy()
+                else:
+                    y_pred = np.append(y_pred, predictions.cpu().detach().numpy())
+                    y_true = np.append(y_true, targets.cpu().detach().numpy())
 
         return np.mean(losses), self._compute_metrics(y_true, y_pred, losses)
 
@@ -195,8 +189,8 @@ class Trainer(abc.ABC):
     def train(self) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
         train_history = []
         valid_history = []
-        for epoch in tqdm(range(1, epochs + 1), desc="Epochs... "):
-            print(f"epoch {epoch}/{epochs}")
+        for epoch in tqdm(range(1, self._arguments.epochs + 1), desc="Epochs... "):
+            print(f"epoch {epoch}/{self._arguments.epochs}")
             train_loss, train_metrics = self._train_operation()
             print("train:", end=" ")
             self._print_metrics(train_metrics)
