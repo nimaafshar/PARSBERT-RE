@@ -79,10 +79,10 @@ class Trainer:
         statement += "]"
         print(statement)
 
-    def _train_callback(self, step: int, total_steps: int, y_true: np.ndarray, y_pred: np.ndarray, losses: List[float]):
-        print(f"step {step}/{total_steps}:")
+    def _train_callback(self, pbar, step: int, total_steps: int, y_true: np.ndarray, y_pred: np.ndarray,
+                        losses: List[float]):
         metrics: Dict[str, float] = self._compute_metrics(y_true, y_pred, losses)
-        self._print_metrics(metrics)
+        pbar.set_postfix(metrics)
 
     def _train_operation(self) -> Tuple[float, Dict[str, float]]:
         losses = []
@@ -91,9 +91,9 @@ class Trainer:
         # put model in training mode
         self._model.train()
         step = 0
-
-        for data in tqdm(self._training_data_loader, total=len(self._training_data_loader), desc="Training... ",
-                         position=1, leave=False):
+        pbar = tqdm(self._training_data_loader, total=len(self._training_data_loader), desc="Training... ",
+                    position=1, leave=False)
+        for data in pbar:
             step += 1
             data: dict
 
@@ -140,7 +140,7 @@ class Trainer:
 
             # print metric
             if step % self._arguments.train_callback_interval == 0:
-                self._train_callback(step, len(self._training_data_loader), y_true, y_pred, losses)
+                self._train_callback(pbar, step, len(self._training_data_loader), y_true, y_pred, losses)
 
         return np.mean(losses), self._compute_metrics(y_true, y_pred, losses)
 
@@ -193,11 +193,11 @@ class Trainer:
         for epoch in tqdm(range(1, self._arguments.epochs + 1), desc="Epochs... ", position=0, leave=True):
             print(f"epoch {epoch}/{self._arguments.epochs}")
             train_loss, train_metrics = self._train_operation()
-            print("train:", end=" ")
+            print("train: ", end=" ")
             self._print_metrics(train_metrics)
 
             valid_loss, valid_metrics = self._validation_operation()
-            print("validation:", end=" ")
+            print("validation: ", end=" ")
             self._print_metrics(valid_metrics)
 
             if valid_loss < self._valid_loss_min:
