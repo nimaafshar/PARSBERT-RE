@@ -39,6 +39,22 @@ class BertEntityMarkerTokenizer(BertTokenizer):
         added_tokens_num: int = self.add_special_tokens(
             {'additional_special_tokens': ['<e1>', '</e1>', '<e2>', '</e2>']})
 
+    @property
+    def e1_start_token_id(self) -> int:
+        return self.convert_tokens_to_ids("<e1>")
+
+    @property
+    def e1_end_token_id(self) -> int:
+        return self.convert_tokens_to_ids("</e1>")
+
+    @property
+    def e2_start_token_id(self) -> int:
+        return self.convert_tokens_to_ids("<e2>")
+
+    @property
+    def e2_end_token_id(self) -> int:
+        return self.convert_tokens_to_ids("</e2>")
+
 
 class BertPEEMTokenizer(BertEntityMarkerTokenizer):
     """
