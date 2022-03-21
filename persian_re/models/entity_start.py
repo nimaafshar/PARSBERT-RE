@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
-from transformers import BertModel
+from transformers import BertModel, BertConfig
 from ..settings import Config
 
 
 class EntityStartModel(nn.Module):
 
-    def __init__(self, config):
+    def __init__(self, config, e1_start_token_id: int, e2_start_token_id: int):
         super(EntityStartModel, self).__init__()
-        self.e1_start_token_id: int = config.e1_start_token_id
-        self.e2_start_token_id: int = config.e2_start_token_id
+        self.e1_start_token_id: int = e1_start_token_id
+        self.e2_start_token_id: int = e2_start_token_id
         self.bert_output_size: int = config.hidden_size
 
         self.bert = BertModel.from_pretrained(Config.MODEL_NAME_OR_PATH)
