@@ -1,9 +1,10 @@
 import torch.nn as nn
-from transformers import BertModel
+from transformers import BertModel, PreTrainedModel, BertConfig
 from ..settings import Config
 
 
-class CLSModel(nn.Module):
+class CLSModel(nn.Module, PreTrainedModel):
+    config_class = BertConfig
 
     def __init__(self, config):
         super(CLSModel, self).__init__()
