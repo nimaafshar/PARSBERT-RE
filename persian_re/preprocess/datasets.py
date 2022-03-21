@@ -25,10 +25,6 @@ class PerlexDataset(torch.utils.data.Dataset):
     def __getitem__(self, item) -> Dict:
         text = str(self.texts[item])
 
-        if self.has_target:
-            target = self.label_map.get(self.targets[item], None)
-            assert target is not None, f"label2id should contain target(class) name {self.targets[item]} as key"
-
         encoding = self.tokenizer.encode_plus(
             text,
             add_special_tokens=True,
@@ -45,7 +41,9 @@ class PerlexDataset(torch.utils.data.Dataset):
             'token_type_ids': encoding['token_type_ids'].flatten(),
         }
 
-        if self.has_target and target:
+        if self.has_target:
+            target = self.label_map.get(self.targets[item], None)
+            assert target is not None, f"label2id should contain target(class) name {self.targets[item]} as key"
             inputs['targets'] = torch.tensor(target, dtype=torch.long)
 
         return inputs
