@@ -1,6 +1,6 @@
 import pathlib
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from sklearn.metrics import accuracy_score, f1_score
 
 import torch
@@ -92,7 +92,8 @@ class Trainer:
         self._model.train()
         step = 0
 
-        for data in tqdm(self._training_data_loader, total=len(self._training_data_loader), desc="Training... "):
+        for data in tqdm(self._training_data_loader, total=len(self._training_data_loader), desc="Training... ",
+                         position=1, leave=False):
             step += 1
             data: dict
 
@@ -153,7 +154,7 @@ class Trainer:
         step = 0
         with torch.no_grad():
             for data in tqdm(self._validation_data_loader, total=len(self._validation_data_loader),
-                             desc="Validation... "):
+                             desc="Validation... ", position=1, leave=False):
                 step += 1
                 data: dict
 
@@ -189,7 +190,7 @@ class Trainer:
     def train(self) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
         train_history = []
         valid_history = []
-        for epoch in tqdm(range(1, self._arguments.epochs + 1), desc="Epochs... "):
+        for epoch in tqdm(range(1, self._arguments.epochs + 1), desc="Epochs... ", position=0, leave=True):
             print(f"epoch {epoch}/{self._arguments.epochs}")
             train_loss, train_metrics = self._train_operation()
             print("train:", end=" ")
@@ -217,7 +218,7 @@ class Trainer:
 
         self._model.eval()
         with torch.no_grad():
-            for data in tqdm(data_loader, total=len(data_loader), desc="Predicting tests"):
+            for data in tqdm(data_loader, total=len(data_loader), desc="Predicting tests", position=0, leave=False):
                 # move tensors to GPU if CUDA is available
                 data = self._move_to_device(data)
                 targets = data.pop('targets')
