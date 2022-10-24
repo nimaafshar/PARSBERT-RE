@@ -1,5 +1,5 @@
 # Persian Relation Extraction
-### Relation Extraction in the Persian language using transformers
+#### Relation Extraction in the Persian language using transformers
 
 Collaborators: [Nima Afshar](https://github.com/nimaafshar/) & [Nika Shahabi](https://github.com/nikashahabi)
 
