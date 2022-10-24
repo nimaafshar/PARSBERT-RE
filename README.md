@@ -1,4 +1,4 @@
-# Persian Relation Extraction
+# PARSBERT-RE
 #### Relation Extraction in the Persian language using transformers
 
 Collaborators: [Nima Afshar](https://github.com/nimaafshar/) & [Nika Shahabi](https://github.com/nikashahabi)
