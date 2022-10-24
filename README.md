@@ -13,6 +13,9 @@ This project has two phases. First, we analyze different architectures for relat
 
 ## Relation Representations from Deep Transformers Model
 
+![Relation Representations Architechtures](./res/repr.png)
+<small>from [^MTB]</small>
+
 We have tested six architectures proposed in the paper on our dataset. Their visualizations are available in the figure below. Architecture's names are in the form of "I-O", Where "I" is the entity span identification method which is applied on input tokens, and "O" is the Fixed length relation representation method done to the output of the transformer model to get the relation representation.
 
   
@@ -32,6 +35,9 @@ We have tested six architectures proposed in the paper on our dataset. Their vis
   
 
 ## Matching the blanks
+
+![Matching The Blanks](./res/MTB.png)
+<small>from [^MTB]</small>
 
 The paper suggests an assumption. This assumption is that for two equal pairs of entities placed in two different sentences, the structures of these two sentences probably imply similar relations. Therefore, these entities can be replaced with BLANK tokens in two sentences. These sentences can be fed to a model that returns a distance value. This value represents the similarity between the relation in the first sentence and the relation in the second sentence.
 
